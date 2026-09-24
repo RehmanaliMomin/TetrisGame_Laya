@@ -152,6 +152,8 @@ def main():
     ap.add_argument("--val-limit", type=int, default=6000)
     ap.add_argument("--train-embeddings", action="store_true",
                     help="also train the 197M-param token embedding table (off: saves ~3 GB, Tetris text uses few tokens)")
+    ap.add_argument("--save-every", type=int, default=250, help="write a resumable checkpoint every N steps (0 off)")
+    ap.add_argument("--resume", action="store_true", help="continue from <out>/resume.pt if it exists")
     ap.add_argument("--amp", choices=["auto", "off", "bf16", "fp16"], default="auto")
     ap.add_argument("--device", default=None)
     ap.add_argument("--seed", type=int, default=0)
@@ -203,7 +205,31 @@ def main():
         opt, lambda s: min((s + 1) / warm, max(0.0, (total - s) / max(1, total - warm))))
     scaler = torch.amp.GradScaler("cuda", enabled=amp == "fp16" and device.type == "cuda")
 
-    step, t0, run_loss = 0, time.time(), 0.0
+    # Resume support: Apple's MPS driver can drop a command buffer hours into a run, and a bare
+    # crash would cost the whole thing. The state file holds everything needed to carry on.
+    ckpt = os.path.join(a.out, "resume.pt")
+    step, run_loss, ev0_saved = 0, 0.0, None
+    if a.resume and os.path.exists(ckpt):
+        st = torch.load(ckpt, map_location=device, weights_only=False)
+        model.load_state_dict(st["model"])
+        opt.load_state_dict(st["opt"])
+        sched.load_state_dict(st["sched"])
+        rng.setstate(st["rng"])
+        step, run_loss, ev0_saved = st["step"], st["run_loss"], st.get("ev0")
+        print("resumed from step %d/%d" % (step, total), flush=True)
+    if ev0_saved:
+        ev0 = ev0_saved
+
+    def save_resume():
+        os.makedirs(a.out, exist_ok=True)
+        torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
+                    "rng": rng.getstate(), "step": step, "run_loss": run_loss,
+                    "ev0": {k: {"acc": v["acc"], "loss": v["loss"]} for k, v in ev0.items()}},
+                   ckpt + ".tmp")
+        os.replace(ckpt + ".tmp", ckpt)  # atomic: a crash mid-save never leaves a torn checkpoint
+
+    t0 = time.time()
+    start_step = step
     order = []
     while step < total:
         if not order:
@@ -224,10 +250,12 @@ def main():
         step += 1
         run_loss = 0.98 * run_loss + 0.02 * loss.item() if step > 1 else loss.item()
         if step % 50 == 0 or step == total:
-            el = time.time() - t0
-            eta = (total - step) * el / step
-            print("step %d/%d  loss %.3f  %.2f it/s  ETA %dm%02ds" % (step, total, run_loss, step / el, eta // 60, eta % 60),
+            el, done = time.time() - t0, step - start_step
+            eta = (total - step) * el / max(1, done)
+            print("step %d/%d  loss %.3f  %.2f it/s  ETA %dm%02ds" % (step, total, run_loss, done / el, eta // 60, eta % 60),
                   flush=True)
+        if a.save_every and step % a.save_every == 0 and step < total:
+            save_resume()
         if step % steps_per_epoch == 0 and step < total:
             print(report("epoch %d" % (step // steps_per_epoch), evaluate(model, enc, val, va_ids, device, a.bs * 2, pad_id, ctx)),
                   flush=True)
@@ -241,12 +269,14 @@ def main():
         by_opts[temp_bucket(QTYPES["choice"], v["k"])] = temps[k]
     cfg["temperature_by_options"] = by_opts
     meta = {"base": os.path.basename(os.path.normpath(a.base)), "train_rows": len(train), "val_rows": len(val),
-            "epochs": a.epochs, "steps": total, "amp": amp, "device": str(device),
+            "epochs": a.epochs, "bs": a.bs, "steps": total, "amp": amp, "device": str(device),
             "val_acc_before": {k: v["acc"] for k, v in ev0.items()},
             "val_acc_after": {k: v["acc"] for k, v in ev1.items()},
             "val_loss_after": {k: v["loss"] for k, v in ev1.items()}, "temperatures": temps,
             "minutes": (time.time() - t0) / 60, "questions": QUESTIONS}
     save(model, cfg, a.base, a.out, meta)
+    if os.path.exists(ckpt):
+        os.remove(ckpt)
     print("saved fine-tuned copy to %s" % a.out, flush=True)
 
 
