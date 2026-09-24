@@ -10,7 +10,7 @@ non-autoregressive decision model. The model is a **fine-tuned copy** of `laya-m
 No search, no lookahead, no generated text: the board becomes a line of features, and Laya returns a
 probability for every option in one forward pass per question.
 
-Fine-tuned weights: **TBD (Hugging Face)**
+Fine-tuned weights: **[https://huggingface.co/rehman-ali/laya-tetris](https://huggingface.co/rehman-ali/laya-tetris)**
 
 ## Results (TBD games, 1,000-piece cap, Apple M5 Pro GPU)
 
@@ -33,7 +33,7 @@ Validation accuracy, 6,000 held-out boards from games never trained on:
 ```bash
 git clone https://github.com/RehmanaliMomin/TetrisGame_Laya && cd TetrisGame_Laya
 pip install -r requirements.txt
-hf download RehmanaliMomin/laya-tetris --local-dir models/laya-tetris   # TBD
+hf download rehman-ali/laya-tetris --local-dir models/laya-tetris
 python server.py            # open http://127.0.0.1:7871
 ```
 
