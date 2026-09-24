@@ -12,21 +12,34 @@ probability for every option in one forward pass per question.
 
 Fine-tuned weights: **[https://huggingface.co/rehman-ali/laya-tetris](https://huggingface.co/rehman-ali/laya-tetris)**
 
-## Results (TBD games, 1,000-piece cap, Apple M5 Pro GPU)
+## Results
 
-| policy | avg lines | best | agrees with teacher | latency p50 / p95 per piece |
-|---|---|---|---|---|
-| teacher (El-Tetris script, not a model) | 398.4 | 399 | 100% | 0.3 / 0.5 ms |
-| **laya-tetris (fine-tuned)** | TBD | TBD | TBD | TBD |
-| laya-base (original, untuned) | TBD | TBD | TBD | TBD |
-| random | 0.0 | 0 | 7.0% | – |
+5 games, 8,000 pieces each, safety mask **off**, Apple M5 Pro GPU, seeds disjoint from training.
+
+| policy | avg lines | best | topped out | agrees with teacher | latency p50 / p95 per piece |
+|---|---|---|---|---|---|
+| teacher (El-Tetris script, not a model) | 3198.2 | 3199 | never | 100% | 0.2 / 0.5 ms |
+| **laya-tetris (fine-tuned)** | **3196.2** | **3199** | **never** | **79.5%** | 36.9 / 43.4 ms |
+| laya-base (original, untuned) | 0.0 | 0 | after 25 pieces | 5.2% | 39.0 / 47.5 ms |
+| random | 0.0 | 0 | after 26 pieces | 7.0% | – |
+
+- **The safety mask never fired once** in 40,000 placements, so every line above is the model's own
+  choice. The untuned model needs the mask on 44 of every 100 pieces.
+- It disagrees with the teacher on about one piece in five and still loses 2 lines in 3,198: where it
+  differs it has usually found an equally good placement, not a worse one.
+- Neither the teacher nor the fine-tuned model has topped out yet at 8,000 pieces, so the ceiling of
+  both is untested, not measured.
 
 Validation accuracy, 6,000 held-out boards from games never trained on:
 
 | question | options | chance | untuned | fine-tuned |
 |---|---|---|---|---|
-| turn | 4 | 25% | 33.3% | TBD |
-| column | 10 | 10% | 10.7% | TBD |
+| turn | 4 | 25% | 33.3% | **84.5%** |
+| column | 10 | 10% | 10.7% | **82.6%** |
+
+One epoch over 163k boards, batch 32, 5,094 steps, about 110 minutes on an M5 Pro.
+
+![Tetris x Laya](docs/screenshot.png)
 
 ## Quick start
 
