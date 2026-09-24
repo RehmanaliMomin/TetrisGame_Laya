@@ -1,0 +1,9 @@
+models/
+data/*.jsonl
+data/*.zip
+data/*.log
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.claude/settings.local.json

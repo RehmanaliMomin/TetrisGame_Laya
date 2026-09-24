@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tetris × Laya</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="layout">
+  <main class="stage">
+    <header class="top">
+      <div>
+        <h1>Tetris <span class="x">×</span> Laya</h1>
+        <p class="sub">Each piece is two Laya <code>choice</code>s: how to turn it, then which column to drop it in.</p>
+      </div>
+      <div class="status" id="status">idle</div>
+    </header>
+
+    <div class="play">
+      <div class="board-col">
+        <div class="board-wrap" id="boardWrap">
+          <canvas id="board" aria-label="Tetris board"></canvas>
+          <div class="overlay" id="overlay" hidden></div>
+        </div>
+        <div class="colstrip" id="colstrip" aria-label="Laya's column probabilities"></div>
+        <p class="strip-cap">Laya's column probabilities, lined up under the board</p>
+      </div>
+
+      <div class="side">
+        <section class="mini">
+          <h2>Next</h2>
+          <canvas id="next" width="96" height="64" aria-label="Next piece"></canvas>
+        </section>
+        <section class="mini big">
+          <h2>Lines</h2>
+          <b id="sLines">0</b>
+        </section>
+        <section class="mini">
+          <h2>Score</h2>
+          <b id="sScore">0</b>
+        </section>
+        <section class="mini">
+          <h2>Level</h2>
+          <b id="sLevel">1</b>
+        </section>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="play" class="primary" title="Space">Play</button>
+      <button id="step" title="S">Step</button>
+      <button id="reset" title="N">New game</button>
+      <label class="field">Policy
+        <select id="policy"></select>
+      </label>
+      <label class="field">Speed
+        <input id="speed" type="range" min="1" max="20" value="6">
+        <output id="speedOut">6/s</output>
+      </label>
+      <label class="check"><input id="mask" type="checkbox" checked> Safety mask</label>
+      <label class="check"><input id="auto" type="checkbox" checked> Auto-restart</label>
+    </div>
+
+    <section class="read">
+      <h2>What Laya read for this piece</h2>
+      <code><span class="q">turn&nbsp;&nbsp;&nbsp;</span><span id="stateTurn">—</span></code>
+      <code><span class="q">column&nbsp;</span><span id="stateCol">—</span></code>
+    </section>
+  </main>
+
+  <aside class="panel" aria-label="Performance metrics">
+    <h2 class="panel-title">Performance</h2>
+
+    <section class="card">
+      <h3>Game</h3>
+      <dl class="grid">
+        <div><dt>Pieces</dt><dd id="mPieces">0</dd></div>
+        <div><dt>Tetrises</dt><dd id="mTetris">0</dd></div>
+        <div><dt>Best (lines)</dt><dd id="mHigh">0</dd></div>
+        <div><dt>Games</dt><dd id="mGames">0</dd></div>
+        <div><dt>Avg lines</dt><dd id="mAvg">—</dd></div>
+        <div><dt>Stack height</dt><dd id="mHeight">0</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h3>Model latency <span class="per">per piece</span></h3>
+      <dl class="grid">
+        <div><dt>Last</dt><dd><span id="mLat">—</span><small>ms</small></dd></div>
+        <div><dt>Average</dt><dd><span id="mLatAvg">—</span><small>ms</small></dd></div>
+        <div><dt>p95</dt><dd><span id="mLatP95">—</span><small>ms</small></dd></div>
+        <div><dt>Pieces / sec</dt><dd id="mPps">—</dd></div>
+        <div class="wide"><dt>Two passes: turn · column</dt><dd class="mono" id="mPasses">—</dd></div>
+        <div class="wide"><dt>Checkpoint · device</dt><dd class="mono" id="mModel">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h3>Decision <span class="badge" id="maskBadge" hidden>mask override</span></h3>
+      <div class="bars" id="turnBars"></div>
+      <div class="conf">
+        <span>Confidence</span>
+        <div class="meter"><i id="confBar"></i></div>
+        <b id="confVal">—</b>
+      </div>
+      <dl class="grid tight">
+        <div><dt>Agrees with teacher</dt><dd id="mAgree">—</dd></div>
+        <div><dt>Mask overrides</dt><dd id="mOver">0</dd></div>
+      </dl>
+      <p class="legend"><i class="dot chosen"></i>played <i class="dot teacher"></i>teacher's pick</p>
+    </section>
+
+    <p class="hint">Space play/pause · S step · N new game</p>
+  </aside>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
