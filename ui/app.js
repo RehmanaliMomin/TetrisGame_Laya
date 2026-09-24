@@ -39,7 +39,7 @@ async function loadPolicies() {
 function tickMs() { return 1000 / Number($("speed").value); }
 
 async function newGame() {
-  setStatus("loading model…");
+  setStatus(`loading ${$("policy").value}…`);
   frame = await post("/api/reset", { policy: $("policy").value });
   pieceTimes = [];
   $("overlay").hidden = true;
@@ -130,16 +130,22 @@ function block(c, x, y, cell, color, alpha = 1) {
   c.globalAlpha = 1;
 }
 
-function drawBoard() {
-  if (!frame) return;
-  const g = frame.game;
-  const cell = parseFloat(canvas.style.width) / g.w;
+function drawWell(cell, w, h) {
   ctx.fillStyle = css("--well");
-  ctx.fillRect(0, 0, cell * g.w, cell * g.h);
+  ctx.fillRect(0, 0, cell * w, cell * h);
   ctx.strokeStyle = css("--grid");
   ctx.lineWidth = 1;
-  for (let x = 1; x < g.w; x++) { ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, cell * g.h); ctx.stroke(); }
-  for (let y = 1; y < g.h; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(cell * g.w, y * cell); ctx.stroke(); }
+  for (let x = 1; x < w; x++) { ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, cell * h); ctx.stroke(); }
+  for (let y = 1; y < h; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(cell * w, y * cell); ctx.stroke(); }
+}
+
+function drawBoard() {
+  const cols = 10, rows = 20;
+  const cell = parseFloat(canvas.style.width) / cols;
+  if (!cell) return;
+  if (!frame) return drawWell(cell, cols, rows);   // before the first frame arrives
+  const g = frame.game;
+  drawWell(cell, g.w, g.h);
 
   const d = frame.decision;
   // the teacher's placement, as an outline, when it differs from what Laya played
@@ -299,10 +305,10 @@ window.addEventListener("resize", fitBoard);
 
 (async () => {
   buildBars();
+  fitBoard();                 // size and paint the empty well before the model loads
   try {
     await loadPolicies();
     await newGame();
-    fitBoard();
   } catch (e) {
     fail(e);
   }
