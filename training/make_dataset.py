@@ -37,12 +37,12 @@ def argmax(xs):
     return max(range(len(xs)), key=xs.__getitem__)
 
 
-def rollout(seed, rng, eps, keep, policy=None, max_pieces=600):
+def rollout(seed, rng, eps, keep, policy=None, max_pieces=600, objective="eltetris"):
     g = Game(seed=seed, max_pieces=max_pieces)
     if rng.random() < 0.5:
         add_garbage(g, rng, rng.randrange(1, 11))
     while not g.done:
-        scores = all_scores(g)
+        scores = all_scores(g, objective)
         best_turn, best_col = teacher_move(g, scores)
         if rng.random() < keep:
             rows = []
@@ -71,7 +71,9 @@ def main():
     ap.add_argument("--val-frac", type=float, default=0.05)
     ap.add_argument("--eps", type=float, default=0.15, help="random placement rate (messier boards)")
     ap.add_argument("--keep", type=float, default=0.25, help="fraction of visited pieces recorded")
-    ap.add_argument("--rollout", default="teacher", help="teacher | laya-tetris (DAgger)")
+    ap.add_argument("--rollout", default="teacher", help="teacher | a model name (DAgger)")
+    ap.add_argument("--teacher", default="eltetris", choices=["eltetris", "tetris"],
+                    help="which objective labels the states: flat-and-steady, or go for 4-line clears")
     ap.add_argument("--out", default="data/tetris")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
@@ -85,7 +87,7 @@ def main():
 
     seen, pieces, game = set(), [], 0
     while len(pieces) < a.pieces:
-        for rows in rollout(a.seed * 1_000_000 + game, rng, a.eps, a.keep, policy):
+        for rows in rollout(a.seed * 1_000_000 + game, rng, a.eps, a.keep, policy, objective=a.teacher):
             if rows[0][1] not in seen:
                 seen.add(rows[0][1])
                 pieces.append((game, rows))

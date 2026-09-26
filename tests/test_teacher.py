@@ -45,3 +45,46 @@ def test_every_scored_placement_is_valid():
     g = Game(seed=4)
     for (t, c) in all_scores(g):
         assert g.is_valid(t, c)
+
+
+def test_tetris_objective_takes_a_four_line_clear():
+    """Four rows open only in column 10, and a vertical I to fill them."""
+    g = Game(seed=0)
+    for y in range(H - 4, H):
+        g.rows[y] = FULL & ~(1 << 9)
+    g.piece = "I"
+    turn, col = teacher_move(g, objective="tetris")
+    assert (turn, col) == (1, 9)          # turned upright, into the well
+    assert g.place(turn, col) == 4
+
+
+def test_tetris_objective_refuses_a_cheap_single_that_the_flat_one_takes():
+    """One row needs a single cell in column 1; the alternative keeps the well ready."""
+    g = Game(seed=0)
+    g.rows[H - 1] = FULL & ~0b1
+    for y in range(H - 4, H - 1):
+        g.rows[y] = FULL & ~(1 << 9) & ~0b1
+    g.piece = "I"
+    flat = teacher_move(g, objective="eltetris")
+    keen = teacher_move(g, objective="tetris")
+    assert flat != keen, "the two objectives should disagree here"
+
+
+def test_tetris_objective_still_clears_when_the_stack_is_high():
+    """Above STACK_PANIC it stops holding out for a Tetris."""
+    from tetris.teacher import STACK_PANIC
+    g = Game(seed=0)
+    for y in range(H - STACK_PANIC - 2, H):
+        g.rows[y] = FULL & ~0b1
+    g.piece = "I"
+    turn, col = teacher_move(g, objective="tetris")
+    assert g.place(turn, col) > 0
+
+
+def test_two_ply_matches_one_ply_when_it_cannot_improve():
+    from tetris.lookahead import all_scores_n
+    g = Game(seed=3)
+    one = all_scores_n(g, 1, "eltetris")
+    two = all_scores_n(g, 2, "eltetris")
+    assert set(one) == set(two)
+    assert all(v > -1e6 for v in two.values())

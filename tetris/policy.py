@@ -10,8 +10,9 @@ from .teacher import all_scores, column_target, teacher_move, turn_target
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIRS = {
-    "laya-tetris": os.path.join(ROOT, "models", "laya-tetris"),  # fine-tuned copy
-    "laya-base": os.path.join(ROOT, "models", "laya-base"),      # untouched laya-multilingual
+    "laya-tetris": os.path.join(ROOT, "models", "laya-tetris"),          # taught by the El-Tetris teacher
+    "laya-tetris-4": os.path.join(ROOT, "models", "laya-tetris-4"),      # taught to go for 4-line clears
+    "laya-base": os.path.join(ROOT, "models", "laya-base"),              # untouched laya-multilingual
 }
 
 
@@ -32,11 +33,15 @@ def apply_mask(g: Game, turn: int, col_probs: List[float]) -> Optional[int]:
 
 
 class TeacherPolicy:
-    name, device = "teacher", "cpu"
+    device = "cpu"
+
+    def __init__(self, objective: str = "eltetris"):
+        self.objective = objective
+        self.name = "teacher" if objective == "eltetris" else "teacher-" + objective
 
     def decide(self, g: Game, mask: bool = True) -> Dict:
         t0 = time.perf_counter()
-        scores = all_scores(g)
+        scores = all_scores(g, self.objective)
         turn, col = teacher_move(g, scores)
         tp, cp = turn_target(g, scores), column_target(g, turn, scores)
         return decision(turn, col, tp, cp, 1.0, (time.perf_counter() - t0) * 1000)
@@ -100,6 +105,8 @@ class LayaPolicy:
 def make_policy(name: str):
     if name == "teacher":
         return TeacherPolicy()
+    if name == "teacher-tetris":
+        return TeacherPolicy("tetris")
     if name == "random":
         return RandomPolicy()
     return LayaPolicy(name)

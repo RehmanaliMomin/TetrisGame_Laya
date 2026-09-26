@@ -21,7 +21,7 @@ from tetris.teacher import all_scores, teacher_move  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", int(os.environ.get("PORT", 7871))
-POLICIES = ["laya-tetris", "laya-base", "teacher", "random"]
+POLICIES = ["laya-tetris-4", "laya-tetris", "laya-base", "teacher", "teacher-tetris", "random"]
 STATIC = {"/": ("index.html", "text/html"), "/style.css": ("style.css", "text/css"),
           "/app.js": ("app.js", "application/javascript")}
 
