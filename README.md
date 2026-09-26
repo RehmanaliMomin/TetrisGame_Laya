@@ -30,6 +30,31 @@ Fine-tuned weights: **[https://huggingface.co/rehman-ali/laya-tetris](https://hu
 - Neither the teacher nor the fine-tuned model has topped out yet at 8,000 pieces, so the ceiling of
   both is untested, not measured.
 
+### Two teachers, two habits
+
+The El-Tetris weights punish wells, so that teacher keeps the stack flat and clears one row at a
+time. It never scores a Tetris, and neither does the model taught by it. A second teacher was
+written to want 4-line clears: it tolerates a well, refuses cheap singles while the stack is low,
+and pays for rows that are full except for the well column.
+
+3 games, 5,000 pieces each, mask off:
+
+| policy | avg lines | Tetrises | topped out |
+|---|---|---|---|
+| teacher (flat) | 1,998 | 0 | never |
+| teacher-tetris (script) | 1,993 | **188.3** | never |
+| **laya-tetris-4** (taught by it) | 1,701 | **55.7** | 1 of 3 games |
+| laya-tetris (taught by the flat teacher) | 1,998 | 4.7 | never |
+
+The habit transfers but the execution does not: 12x the Tetrises of the flat-taught model, and
+under a third of its own teacher's. Holding a well open is less forgiving than keeping the stack
+flat, so the same ~80% column accuracy that costs nothing in the flat game costs 300 lines and one
+game in three here. That is distribution shift, and the DAgger round in step 7 is the fix for it.
+
+Searching the next piece does not help: see [`tetris/lookahead.py`](tetris/lookahead.py), where
+2 plies more than halves the Tetrises because the second ply keeps cashing in the well the first
+was holding open.
+
 Validation accuracy, 6,000 held-out boards from games never trained on:
 
 | question | options | chance | untuned | fine-tuned |
