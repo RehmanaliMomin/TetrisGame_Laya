@@ -181,5 +181,5 @@ class Game:
         return {"w": W, "h": H, "board": ["".join(r) for r in self.colors], "piece": self.piece,
                 "next": self.next, "lines": self.lines, "score": self.score, "level": self.level,
                 "pieces": self.pieces, "clears": self.clears, "done": self.done, "end_cause": self.end_cause,
-                "heights": self.heights(), "last": self.last,
+                "heights": self.heights(), "holes": self.holes(), "last": self.last,
                 "shapes": {p: [list(map(list, s)) for s in SHAPES[p]] for p in (self.piece, self.next)}}

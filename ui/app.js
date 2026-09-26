@@ -16,6 +16,7 @@ let running = false;
 let busy = false;      // a request is in flight: never overlap steps
 let timer = null;
 let pieceTimes = [];   // client timestamps of recent pieces, for pieces/sec
+let history = [];      // {height, holes, cleared} per piece, for the sparkline
 
 // ---------------------------------------------------------------- server
 async function post(path, body = {}) {
@@ -45,6 +46,7 @@ async function newGame() {
   setStatus(`loading ${$("policy").value}…`);
   frame = await post("/api/reset", { policy: $("policy").value });
   pieceTimes = [];
+  history = [];
   $("overlay").hidden = true;
   render();
   setStatus(running ? "running" : "ready", running ? "running" : "");
@@ -59,6 +61,11 @@ async function stepOnce() {
     frame = await post("/api/step", { mask: $("mask").checked });
     pieceTimes.push(performance.now());
     if (pieceTimes.length > 20) pieceTimes.shift();
+    const holes = frame.game.holes.reduce((a, b) => a + b, 0);
+    history.push({ height: Math.max(...frame.game.heights), holes,
+                   cleared: (frame.game.last.cleared || []).length,
+                   dug: history.length ? holes > history[history.length - 1].holes : false });
+    if (history.length > 120) history.shift();
     renderPanel();
     await animateDrop(before);   // the piece falls; the board only updates once it lands
     render();
@@ -266,6 +273,60 @@ function drawStack(board, cell) {
   }
 }
 
+// Stack height over the recent past. The interesting thing this model does is dig itself out of
+// trouble, and that only shows up as a shape over time.
+function drawSpark() {
+  const c = $("spark"), n = history.length;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 260, H = 75;
+  c.width = W * dpr; c.height = H * dpr;
+  const g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  const pad = 3, top = pad, bot = H - pad;
+  // Auto-scale: a teacher that holds the stack at 4 rows would be a flat line against a 20-row axis.
+  const peak = Math.max(6, ...history.map((p) => p.height));
+  const scale = Math.min(20, peak + 2);
+  const y = (h) => bot - (bot - top) * Math.min(1, h / scale);
+  const gridEvery = scale <= 8 ? 2 : scale <= 14 ? 4 : 5;
+  g.strokeStyle = css("--line-soft");
+  g.lineWidth = 1;
+  g.font = "9px ui-monospace, Menlo, monospace";
+  g.fillStyle = css("--muted");
+  for (let h = gridEvery; h < scale; h += gridEvery) {
+    g.beginPath(); g.moveTo(0, y(h)); g.lineTo(W, y(h)); g.stroke();
+    g.fillText(String(h), 2, y(h) - 2);
+  }
+  if (n < 2) return;
+  const x = (i) => (W * i) / Math.max(1, history.length - 1);
+
+  g.beginPath();                         // filled area under the height line
+  g.moveTo(x(0), bot);
+  history.forEach((p, i) => g.lineTo(x(i), y(p.height)));
+  g.lineTo(x(n - 1), bot);
+  g.closePath();
+  g.fillStyle = "color-mix(in srgb, " + css("--accent") + " 16%, transparent)";
+  g.fill();
+
+  g.beginPath();
+  history.forEach((p, i) => (i ? g.lineTo(x(i), y(p.height)) : g.moveTo(x(i), y(p.height))));
+  g.strokeStyle = css("--accent");
+  g.lineWidth = 1.6;
+  g.stroke();
+
+  history.forEach((p, i) => {            // a tick per line clear, amber when a hole appeared
+    if (p.cleared) {
+      g.fillStyle = css("--accent");
+      g.fillRect(x(i) - 0.9, y(p.height) - 4, 1.8, 4);
+    }
+    if (p.dug) {
+      g.fillStyle = css("--teacher");
+      g.beginPath(); g.arc(x(i), y(p.height), 1.7, 0, Math.PI * 2); g.fill();
+    }
+  });
+}
+
 function drawNext() {
   const g = frame.game;
   const cells = g.shapes[g.next][0];
@@ -339,6 +400,7 @@ function render() {
 function renderPanel() {
   drawNext();
   drawTurnIcons();
+  drawSpark();
   const { game: g, stats: s, decision: d } = frame;
 
   if ($("sLines").textContent !== String(g.lines)) {
