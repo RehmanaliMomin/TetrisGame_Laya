@@ -1,6 +1,9 @@
 // Tetris x Laya front end: draws frames from the Python server and fills the metrics panel.
 const TURNS = ["spawn", "right", "flip", "left"];
-const COLORS = { I: "#4ad2e0", O: "#f2c94c", T: "#b06ff2", S: "#54d97b", Z: "#f2685f", J: "#5b8cf5", L: "#f59b4b", G: "#5a6b7d" };
+let COLORS = {};   // filled from CSS so the pieces follow the theme
+function readColors() {
+  COLORS = Object.fromEntries("IOTSZJLG".split("").map((p) => [p, css("--p-" + p)]));
+}
 const $ = (id) => document.getElementById(id);
 
 const canvas = $("board");
@@ -124,13 +127,41 @@ function fitBoard() {
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 function block(c, x, y, cell, color, alpha = 1) {
+  const p = Math.max(1, cell * 0.06);
+  const x0 = x * cell + p, y0 = y * cell + p, w = cell - 2 * p, r = cell * 0.22;
+  c.save();
   c.globalAlpha = alpha;
-  c.fillStyle = color;
-  const p = Math.max(1, cell * 0.07);
+  const g = c.createLinearGradient(x0, y0, x0, y0 + w);
+  g.addColorStop(0, shade(color, 0.16));
+  g.addColorStop(0.55, color);
+  g.addColorStop(1, shade(color, -0.16));
+  c.fillStyle = g;
   c.beginPath();
-  c.roundRect(x * cell + p, y * cell + p, cell - 2 * p, cell - 2 * p, cell * 0.2);
+  c.roundRect(x0, y0, w, w, r);
   c.fill();
-  c.globalAlpha = 1;
+  c.strokeStyle = shade(color, -0.3);
+  c.lineWidth = Math.max(0.6, cell * 0.035);
+  c.stroke();
+  if (cell >= 16) {   // a highlight on the top edge: too busy to be worth it on a tiny board
+    c.globalAlpha = alpha * 0.5;
+    c.strokeStyle = shade(color, 0.42);
+    c.lineWidth = Math.max(0.8, cell * 0.06);
+    c.beginPath();
+    c.moveTo(x0 + r, y0 + c.lineWidth);
+    c.lineTo(x0 + w - r, y0 + c.lineWidth);
+    c.stroke();
+  }
+  c.restore();
+}
+
+/* Lighten (k > 0) or darken (k < 0) a #rrggbb colour. */
+function shade(hex, k) {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = [n >> 16 & 255, n >> 8 & 255, n & 255].map((v) =>
+    Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k)))));
+  return "rgb(" + ch.join(",") + ")";
 }
 
 function drawWell(cell, w, h) {
@@ -310,7 +341,13 @@ function renderPanel() {
   drawTurnIcons();
   const { game: g, stats: s, decision: d } = frame;
 
-  $("sLines").textContent = g.lines;
+  if ($("sLines").textContent !== String(g.lines)) {
+    const el = $("sLines");
+    el.textContent = g.lines;
+    el.classList.remove("bump");
+    void el.offsetWidth;        // restart the animation
+    el.classList.add("bump");
+  }
   $("sScore").textContent = g.score;
   $("sLevel").textContent = g.level;
   $("mPieces").textContent = g.pieces;
@@ -366,9 +403,17 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "s") $("step").click();
   else if (e.key === "n") $("reset").click();
 });
+$("theme").onclick = () => {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("theme", next); } catch (e) { /* private window: theme just won't persist */ }
+  readColors();
+  if (frame) render();
+};
 window.addEventListener("resize", fitBoard);
 
 (async () => {
+  readColors();
   buildBars();
   fitBoard();                 // size and paint the empty well before the model loads
   try {
