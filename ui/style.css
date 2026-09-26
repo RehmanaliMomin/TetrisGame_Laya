@@ -71,6 +71,7 @@ canvas#board { display: block; border-radius: 10px; box-shadow: 0 0 0 1px var(--
   font-size: 24px; font-weight: 700; text-shadow: 0 2px 16px rgba(0,0,0,.7);
   background: linear-gradient(transparent 30%, rgba(13,17,23,.55) 50%, transparent 70%);
 }
+.overlay[hidden] { display: none; }   /* `display: grid` above would otherwise beat the hidden attribute */
 .overlay small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
 
 /* the column strip is exactly one board wide: bar i sits under column i */

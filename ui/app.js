@@ -52,9 +52,12 @@ async function stepOnce() {
   busy = true;
   try {
     if (!frame || frame.game.done) await newGame();
+    const before = frame.game.board;
     frame = await post("/api/step", { mask: $("mask").checked });
     pieceTimes.push(performance.now());
     if (pieceTimes.length > 20) pieceTimes.shift();
+    renderPanel();
+    await animateDrop(before);   // the piece falls; the board only updates once it lands
     render();
     if (frame.game.done) await gameOver();
   } finally {
@@ -157,12 +160,7 @@ function drawBoard() {
       ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
     }
   }
-  for (let y = 0; y < g.h; y++) {
-    const row = g.board[y];
-    for (let x = 0; x < g.w; x++) {
-      if (row[x] !== ".") block(ctx, x, y, cell, COLORS[row[x]] || css("--accent"));
-    }
-  }
+  drawStack(g.board, cell);
   // highlight the piece that was just placed
   if (g.last && !g.done) {
     for (const [x, y] of g.last.cells) {
@@ -170,6 +168,69 @@ function drawBoard() {
       ctx.strokeStyle = "rgba(255,255,255,.55)";
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x * cell + 2, y * cell + 2, cell - 4, cell - 4);
+    }
+  }
+}
+
+// A piece is placed with one hard drop, so without this it would simply appear in the stack.
+// The fall is cosmetic: the server already decided where the piece lands.
+function animateDrop(beforeBoard) {
+  const g = frame.game, d = frame.decision;
+  const cells = g.last && g.last.cells;
+  if (!cells || !d || !$("anim").checked || cells.some(([, y]) => y < 0)) return Promise.resolve();
+  const cell = parseFloat(canvas.style.width) / 10;
+  if (!cell) return Promise.resolve();
+  const top = Math.min(...cells.map(([, y]) => y));
+  const height = Math.max(...cells.map(([, y]) => y)) - top + 1;
+  const from = -height;                     // just above the ceiling
+  const rows = top - from;
+  if (rows <= 0) return Promise.resolve();
+  // ~26 ms per row of fall, but never more than most of one tick: the animation must not set the pace
+  const ms = Math.min(rows * 26, Math.max(70, tickMs() * 0.7));
+  const color = COLORS[d.piece] || css("--accent");
+  const t0 = performance.now();
+  return new Promise((done) => {
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms);
+      const dy = Math.round(from + rows * k * k) - top;   // k*k: accelerates like a falling block
+      drawWell(cell, 10, 20);
+      drawStack(beforeBoard, cell);
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      for (const [x, y] of cells) block(ctx, x, y, cell, color);   // ghost: where it will land
+      ctx.restore();
+      for (const [x, y] of cells) {
+        const yy = y + dy;
+        if (yy >= 0) block(ctx, x, yy, cell, color);
+      }
+      if (k < 1) requestAnimationFrame(step); else flashClears(cell, beforeBoard, cells, color).then(done);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+function flashClears(cell, beforeBoard, cells, color) {
+  const cleared = frame.game.last.cleared;
+  if (!cleared || !cleared.length) return Promise.resolve();
+  const t0 = performance.now(), ms = 160;
+  return new Promise((done) => {
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms);
+      drawWell(cell, 10, 20);
+      drawStack(beforeBoard, cell);
+      for (const [x, y] of cells) block(ctx, x, y, cell, color);
+      ctx.fillStyle = "rgba(255,255,255," + (0.85 * (1 - Math.abs(2 * k - 1))).toFixed(3) + ")";
+      for (const y of cleared) ctx.fillRect(0, y * cell, cell * 10, cell);
+      if (k < 1) requestAnimationFrame(step); else done();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+function drawStack(board, cell) {
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (board[y][x] !== ".") block(ctx, x, y, cell, COLORS[board[y][x]] || css("--accent"));
     }
   }
 }
@@ -241,6 +302,10 @@ const pct = (v) => (v === null || v === undefined ? "—" : (v * 100).toFixed(0)
 
 function render() {
   drawBoard();
+  renderPanel();
+}
+
+function renderPanel() {
   drawNext();
   drawTurnIcons();
   const { game: g, stats: s, decision: d } = frame;
