@@ -216,14 +216,14 @@ function animateDrop(beforeBoard) {
   const from = -height;                     // just above the ceiling
   const rows = top - from;
   if (rows <= 0) return Promise.resolve();
-  // ~26 ms per row of fall, but never more than most of one tick: the animation must not set the pace
-  const ms = Math.min(rows * 26, Math.max(70, tickMs() * 0.7));
+  // ~55 ms per row of fall, but never more than most of one tick: the animation must not set the pace
+  const ms = Math.min(rows * 55, Math.max(70, tickMs() * 0.8));
   const color = COLORS[d.piece] || css("--accent");
   const t0 = performance.now();
   return new Promise((done) => {
     const step = (now) => {
       const k = Math.min(1, (now - t0) / ms);
-      const dy = Math.round(from + rows * k * k) - top;   // k*k: accelerates like a falling block
+      const dy = Math.round(from + rows * (0.25 * k + 0.75 * k * k)) - top;   // starts moving, then accelerates
       drawWell(cell, 10, 20);
       drawStack(beforeBoard, cell);
       ctx.save();
