@@ -17,6 +17,8 @@ let busy = false;      // a request is in flight: never overlap steps
 let timer = null;
 let pieceTimes = [];   // client timestamps of recent pieces, for pieces/sec
 let history = [];      // {height, holes, cleared} per piece, for the sparkline
+let loading = false;   // a reset is in flight: the model may be loading from disk
+const loaded = new Set();   // policies whose checkpoint the server already has in memory
 
 // ---------------------------------------------------------------- server
 async function post(path, body = {}) {
@@ -43,12 +45,25 @@ async function loadPolicies() {
 function tickMs() { return 1000 / Number($("speed").value); }
 
 async function newGame() {
-  setStatus(`loading ${$("policy").value}…`);
-  frame = await post("/api/reset", { policy: $("policy").value });
-  pieceTimes = [];
-  history = [];
-  $("overlay").hidden = true;
-  render();
+  const name = $("policy").value;
+  // A checkpoint takes tens of seconds to load the first time. Say so on the board, or the page
+  // just sits there looking broken.
+  const cold = name.startsWith("laya") && !loaded.has(name);
+  loading = true;
+  setStatus(cold ? `loading ${name}…` : `starting ${name}…`);
+  if (cold) showOverlay("Loading " + name, "first run reads a 650 MB checkpoint");
+  $("play").disabled = $("step").disabled = true;
+  try {
+    frame = await post("/api/reset", { policy: name });
+    loaded.add(name);
+    pieceTimes = [];
+    history = [];
+    $("overlay").hidden = true;
+    render();
+  } finally {
+    loading = false;
+    $("play").disabled = $("step").disabled = false;
+  }
   setStatus(running ? "running" : "ready", running ? "running" : "");
 }
 
@@ -101,7 +116,7 @@ function setRunning(on) {
   running = on;
   $("play").textContent = on ? "Pause" : "Play";
   clearTimeout(timer);
-  setStatus(on ? "running" : "paused", on ? "running" : "");
+  if (!loading) setStatus(on ? "running" : "paused", on ? "running" : "");
   if (on) loop();
 }
 
@@ -226,22 +241,35 @@ function animateDrop(beforeBoard) {
   // ~55 ms per row of fall, but never more than most of one tick: the animation must not set the pace
   const ms = Math.min(rows * 55, Math.max(70, tickMs() * 0.8));
   const color = COLORS[d.piece] || css("--accent");
-  const t0 = performance.now();
+  return animate(ms, (k) => {
+    const dy = Math.round(from + rows * (0.25 * k + 0.75 * k * k)) - top;   // starts moving, then accelerates
+    drawWell(cell, 10, 20);
+    drawStack(beforeBoard, cell);
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    for (const [x, y] of cells) block(ctx, x, y, cell, color);   // ghost: where it will land
+    ctx.restore();
+    for (const [x, y] of cells) {
+      const yy = y + dy;
+      if (yy >= 0) block(ctx, x, yy, cell, color);
+    }
+  }).then(() => flashClears(cell, beforeBoard, cells, color));
+}
+
+/* Run `draw(k)` for k from 0 to 1 over `ms`, then resolve.
+   requestAnimationFrame stops firing in a hidden tab, so a timer finishes the job: without it a
+   background tab leaves the step waiting forever and the game never advances again. */
+function animate(ms, draw) {
   return new Promise((done) => {
+    const t0 = performance.now();
+    let finished = false;
+    const finish = () => { if (!finished) { finished = true; clearTimeout(guard); draw(1); done(); } };
+    const guard = setTimeout(finish, ms + 400);
     const step = (now) => {
+      if (finished) return;
       const k = Math.min(1, (now - t0) / ms);
-      const dy = Math.round(from + rows * (0.25 * k + 0.75 * k * k)) - top;   // starts moving, then accelerates
-      drawWell(cell, 10, 20);
-      drawStack(beforeBoard, cell);
-      ctx.save();
-      ctx.globalAlpha = 0.28;
-      for (const [x, y] of cells) block(ctx, x, y, cell, color);   // ghost: where it will land
-      ctx.restore();
-      for (const [x, y] of cells) {
-        const yy = y + dy;
-        if (yy >= 0) block(ctx, x, yy, cell, color);
-      }
-      if (k < 1) requestAnimationFrame(step); else flashClears(cell, beforeBoard, cells, color).then(done);
+      draw(k);
+      if (k < 1) requestAnimationFrame(step); else finish();
     };
     requestAnimationFrame(step);
   });
@@ -250,18 +278,12 @@ function animateDrop(beforeBoard) {
 function flashClears(cell, beforeBoard, cells, color) {
   const cleared = frame.game.last.cleared;
   if (!cleared || !cleared.length) return Promise.resolve();
-  const t0 = performance.now(), ms = 160;
-  return new Promise((done) => {
-    const step = (now) => {
-      const k = Math.min(1, (now - t0) / ms);
-      drawWell(cell, 10, 20);
-      drawStack(beforeBoard, cell);
-      for (const [x, y] of cells) block(ctx, x, y, cell, color);
-      ctx.fillStyle = "rgba(255,255,255," + (0.85 * (1 - Math.abs(2 * k - 1))).toFixed(3) + ")";
-      for (const y of cleared) ctx.fillRect(0, y * cell, cell * 10, cell);
-      if (k < 1) requestAnimationFrame(step); else done();
-    };
-    requestAnimationFrame(step);
+  return animate(160, (k) => {
+    drawWell(cell, 10, 20);
+    drawStack(beforeBoard, cell);
+    for (const [x, y] of cells) block(ctx, x, y, cell, color);
+    ctx.fillStyle = "rgba(255,255,255," + (0.85 * (1 - Math.abs(2 * k - 1))).toFixed(3) + ")";
+    for (const y of cleared) ctx.fillRect(0, y * cell, cell * 10, cell);
   });
 }
 

@@ -142,9 +142,22 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": "%s: %s" % (type(e).__name__, e)})
 
 
+def warm(name):
+    """Load the default checkpoint in the background, so the first page view is not stuck on disk."""
+    try:
+        with lock:
+            session.policies[name] = make_policy(name)
+        print("warmed %s" % name, flush=True)
+    except Exception as e:
+        print("could not warm %s: %s" % (name, e), flush=True)
+
+
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print("Tetris x Laya running at http://%s:%d  (Ctrl+C to stop)" % (HOST, PORT), flush=True)
+    first = next((p for p in POLICIES if available(p)), None)
+    if first and first in MODEL_DIRS:
+        threading.Thread(target=warm, args=(first,), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
